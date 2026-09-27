@@ -1,0 +1,1 @@
+"""Merkato Directory backend package."""

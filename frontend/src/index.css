@@ -1,0 +1,261 @@
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { apiFetch, apiUpload } from '../../api';
+
+function Dashboard() {
+  const navigate = useNavigate();
+  const [buildings, setBuildings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const [buildingForm, setBuildingForm] = useState({ name: '', description: '', image_url: '', sort_order: 0, is_published: true });
+  const [categoryForm, setCategoryForm] = useState({ building_id: '', name: '', description: '', image_url: '', sort_order: 0, is_published: true });
+  const [roomForm, setRoomForm] = useState({ category_id: '', room_number: '', name: '', description: '', image_url: '', sort_order: 0, is_published: true });
+  const [businessForm, setBusinessForm] = useState({ room_id: '', business_name: '', description: '', phone: '', alternative_phone: '', telegram: '', whatsapp: '', facebook: '', instagram: '', website: '', opening_hours: '', services: '', products: '', notes: '', image_url: '', is_published: true });
+
+  async function loadDashboard() {
+    try {
+      const result = await apiFetch('/api/buildings');
+      setBuildings(result);
+    } catch (err) {
+      setError(err.message || 'Unable to load dashboard');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const token = localStorage.getItem('merkato_token');
+    if (!token) {
+      navigate('/admin/login');
+      return;
+    }
+
+    loadDashboard();
+  }, [navigate]);
+
+  async function handleUpload(event, setter) {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+      const result = await apiUpload(file);
+      setter((prev) => ({ ...prev, image_url: result.url }));
+    } catch (err) {
+      setError(err.message || 'Upload failed');
+    }
+  }
+
+  async function saveBuilding(event) {
+    event.preventDefault();
+    try {
+      await apiFetch('/api/buildings', {
+        method: 'POST',
+        body: JSON.stringify(buildingForm),
+      });
+      setBuildingForm({ name: '', description: '', image_url: '', sort_order: 0, is_published: true });
+      loadDashboard();
+    } catch (err) {
+      setError(err.message || 'Could not save building');
+    }
+  }
+
+  async function saveCategory(event) {
+    event.preventDefault();
+    try {
+      await apiFetch(`/api/buildings/${categoryForm.building_id}/categories`, {
+        method: 'POST',
+        body: JSON.stringify({ ...categoryForm, building_id: Number(categoryForm.building_id) }),
+      });
+      setCategoryForm({ building_id: '', name: '', description: '', image_url: '', sort_order: 0, is_published: true });
+      loadDashboard();
+    } catch (err) {
+      setError(err.message || 'Could not save category');
+    }
+  }
+
+  async function saveRoom(event) {
+    event.preventDefault();
+    try {
+      await apiFetch(`/api/categories/${roomForm.category_id}/rooms`, {
+        method: 'POST',
+        body: JSON.stringify({ ...roomForm, category_id: Number(roomForm.category_id) }),
+      });
+      setRoomForm({ category_id: '', room_number: '', name: '', description: '', image_url: '', sort_order: 0, is_published: true });
+      loadDashboard();
+    } catch (err) {
+      setError(err.message || 'Could not save room');
+    }
+  }
+
+  async function saveBusiness(event) {
+    event.preventDefault();
+    try {
+      await apiFetch(`/api/rooms/${businessForm.room_id}/business`, {
+        method: 'POST',
+        body: JSON.stringify({ ...businessForm, room_id: Number(businessForm.room_id) }),
+      });
+      setBusinessForm({ room_id: '', business_name: '', description: '', phone: '', alternative_phone: '', telegram: '', whatsapp: '', facebook: '', instagram: '', website: '', opening_hours: '', services: '', products: '', notes: '', image_url: '', is_published: true });
+      loadDashboard();
+    } catch (err) {
+      setError(err.message || 'Could not save business');
+    }
+  }
+
+  return (
+    <div className="admin-shell">
+      <header className="admin-topbar">
+        <div className="container admin-topbar-inner">
+          <div>
+            <h2>Merkato Admin</h2>
+          </div>
+          <div className="admin-actions">
+            <Link to="/">Public site</Link>
+            <button onClick={() => localStorage.removeItem('merkato_token') || navigate('/admin/login')}>Logout</button>
+          </div>
+        </div>
+      </header>
+
+      <main className="container admin-grid">
+        <aside className="admin-sidebar panel">
+          <h3>Dashboard</h3>
+          <ul>
+            <li>Buildings</li>
+            <li>Categories</li>
+            <li>Rooms / Shops</li>
+            <li>Businesses</li>
+            <li>Images / Media</li>
+            <li>Settings</li>
+          </ul>
+        </aside>
+
+        <div className="admin-main">
+          {error && <div className="form-error">{error}</div>}
+
+          <section className="panel admin-section">
+            <h3>Add Building</h3>
+            <form onSubmit={saveBuilding} className="admin-form">
+              <input placeholder="Building name" value={buildingForm.name} onChange={(e) => setBuildingForm({ ...buildingForm, name: e.target.value })} required />
+              <textarea placeholder="Description" value={buildingForm.description} onChange={(e) => setBuildingForm({ ...buildingForm, description: e.target.value })} />
+              <input type="number" placeholder="Sort order" value={buildingForm.sort_order} onChange={(e) => setBuildingForm({ ...buildingForm, sort_order: Number(e.target.value) })} />
+              <label>
+                <span>Building image</span>
+                <input type="file" onChange={(e) => handleUpload(e, setBuildingForm)} accept="image/*" />
+              </label>
+              {buildingForm.image_url && <img src={buildingForm.image_url} alt="Building preview" className="preview-image" />}
+              <button type="submit" className="primary-button">Save Building</button>
+            </form>
+          </section>
+
+          <section className="panel admin-section">
+            <h3>Add Category</h3>
+            <form onSubmit={saveCategory} className="admin-form">
+              <select value={categoryForm.building_id} onChange={(e) => setCategoryForm({ ...categoryForm, building_id: e.target.value })} required>
+                <option value="">Select building</option>
+                {buildings.map((building) => (
+                  <option key={building.id} value={building.id}>{building.name}</option>
+                ))}
+              </select>
+              <input placeholder="Category name" value={categoryForm.name} onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })} required />
+              <textarea placeholder="Category description" value={categoryForm.description} onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })} />
+              <input type="number" placeholder="Sort order" value={categoryForm.sort_order} onChange={(e) => setCategoryForm({ ...categoryForm, sort_order: Number(e.target.value) })} />
+              <label>
+                <span>Category image</span>
+                <input type="file" onChange={(e) => handleUpload(e, setCategoryForm)} accept="image/*" />
+              </label>
+              {categoryForm.image_url && <img src={categoryForm.image_url} alt="Category preview" className="preview-image" />}
+              <button type="submit" className="primary-button">Save Category</button>
+            </form>
+          </section>
+
+          <section className="panel admin-section">
+            <h3>Add Room / Shop</h3>
+            <form onSubmit={saveRoom} className="admin-form">
+              <select value={roomForm.category_id} onChange={(e) => setRoomForm({ ...roomForm, category_id: e.target.value })} required>
+                <option value="">Select category</option>
+                {buildings.flatMap((building) =>
+                  building.categories.map((category) => (
+                    <option key={category.id} value={category.id}>{building.name} / {category.name}</option>
+                  ))
+                )}
+              </select>
+              <input placeholder="Room number" value={roomForm.room_number} onChange={(e) => setRoomForm({ ...roomForm, room_number: e.target.value })} required />
+              <input placeholder="Shop or room name" value={roomForm.name} onChange={(e) => setRoomForm({ ...roomForm, name: e.target.value })} required />
+              <textarea placeholder="Description" value={roomForm.description} onChange={(e) => setRoomForm({ ...roomForm, description: e.target.value })} />
+              <input type="number" placeholder="Sort order" value={roomForm.sort_order} onChange={(e) => setRoomForm({ ...roomForm, sort_order: Number(e.target.value) })} />
+              <label>
+                <span>Room image</span>
+                <input type="file" onChange={(e) => handleUpload(e, setRoomForm)} accept="image/*" />
+              </label>
+              {roomForm.image_url && <img src={roomForm.image_url} alt="Room preview" className="preview-image" />}
+              <button type="submit" className="primary-button">Save Room</button>
+            </form>
+          </section>
+
+          <section className="panel admin-section">
+            <h3>Add Business</h3>
+            <form onSubmit={saveBusiness} className="admin-form">
+              <select value={businessForm.room_id} onChange={(e) => setBusinessForm({ ...businessForm, room_id: e.target.value })} required>
+                <option value="">Select room</option>
+                {buildings.flatMap((building) =>
+                  building.categories.flatMap((category) =>
+                    category.rooms?.map((room) => (
+                      <option key={room.id} value={room.id}>{building.name} / {category.name} / {room.name}</option>
+                    )) || []
+                  )
+                )}
+              </select>
+              <input placeholder="Business name" value={businessForm.business_name} onChange={(e) => setBusinessForm({ ...businessForm, business_name: e.target.value })} required />
+              <textarea placeholder="Business description" value={businessForm.description} onChange={(e) => setBusinessForm({ ...businessForm, description: e.target.value })} />
+              <input placeholder="Phone" value={businessForm.phone} onChange={(e) => setBusinessForm({ ...businessForm, phone: e.target.value })} />
+              <input placeholder="Alternative phone" value={businessForm.alternative_phone} onChange={(e) => setBusinessForm({ ...businessForm, alternative_phone: e.target.value })} />
+              <input placeholder="Telegram" value={businessForm.telegram} onChange={(e) => setBusinessForm({ ...businessForm, telegram: e.target.value })} />
+              <input placeholder="WhatsApp" value={businessForm.whatsapp} onChange={(e) => setBusinessForm({ ...businessForm, whatsapp: e.target.value })} />
+              <input placeholder="Facebook" value={businessForm.facebook} onChange={(e) => setBusinessForm({ ...businessForm, facebook: e.target.value })} />
+              <input placeholder="Instagram" value={businessForm.instagram} onChange={(e) => setBusinessForm({ ...businessForm, instagram: e.target.value })} />
+              <input placeholder="Website" value={businessForm.website} onChange={(e) => setBusinessForm({ ...businessForm, website: e.target.value })} />
+              <textarea placeholder="Opening hours" value={businessForm.opening_hours} onChange={(e) => setBusinessForm({ ...businessForm, opening_hours: e.target.value })} />
+              <textarea placeholder="Services" value={businessForm.services} onChange={(e) => setBusinessForm({ ...businessForm, services: e.target.value })} />
+              <textarea placeholder="Products" value={businessForm.products} onChange={(e) => setBusinessForm({ ...businessForm, products: e.target.value })} />
+              <textarea placeholder="Additional notes" value={businessForm.notes} onChange={(e) => setBusinessForm({ ...businessForm, notes: e.target.value })} />
+              <label>
+                <span>Business image</span>
+                <input type="file" onChange={(e) => handleUpload(e, setBusinessForm)} accept="image/*" />
+              </label>
+              {businessForm.image_url && <img src={businessForm.image_url} alt="Business preview" className="preview-image" />}
+              <button type="submit" className="primary-button">Save Business</button>
+            </form>
+          </section>
+
+          <section className="panel admin-section">
+            <h3>Directory structure</h3>
+            {loading ? <p>Loading...</p> : (
+              <div className="tree-list">
+                {buildings.map((building) => (
+                  <div key={building.id} className="tree-node">
+                    <strong>{building.name}</strong>
+                    <div className="tree-indent">
+                      {building.categories?.map((category) => (
+                        <div key={category.id}>
+                          <span>• {category.name}</span>
+                          <div className="tree-indent inner">
+                            {category.rooms?.map((room) => (
+                              <div key={room.id}>
+                                <span>• {room.room_number} / {room.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default Dashboard;

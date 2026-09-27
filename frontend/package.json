@@ -1,0 +1,466 @@
+import os
+import re
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import and_, or_
+from sqlalchemy.orm import Session
+
+from app.auth import create_access_token, get_current_admin, authenticate_user
+from app.config import settings
+from app.database import Base, engine, get_db
+from app.models import AdminUser, Building, Category, Room, Business
+from app.schemas import BusinessCreate, BusinessUpdate, BuildingCreate, BuildingUpdate, CategoryCreate, CategoryUpdate, RoomCreate, RoomUpdate, Token, UploadResponse, UserLogin
+from app.seed import seed_database
+
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title=settings.APP_NAME, version="1.0.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[origin.strip() for origin in settings.CORS_ORIGINS.split(",") if origin.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+UPLOAD_DIR = Path(settings.UPLOAD_ROOT)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(UPLOAD_DIR)), name="static")
+
+
+@app.on_event("startup")
+def startup_event():
+    db = next(get_db())
+    seed_database(db)
+    db.close()
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "app": settings.APP_NAME}
+
+
+@app.post("/api/auth/login", response_model=Token)
+def login(request: UserLogin, db: Session = Depends(get_db)):
+    user = authenticate_user(db, request.username, request.password)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+    token = create_access_token({"sub": user.username})
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.get("/api/auth/me")
+def get_me(current_admin: AdminUser = Depends(get_current_admin)):
+    return {"id": current_admin.id, "username": current_admin.username, "role": current_admin.role}
+
+
+@app.post("/api/upload", response_model=UploadResponse)
+def upload_file(file: UploadFile = File(...), current_admin: AdminUser = Depends(get_current_admin)):
+    allowed_types = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+    if not file.content_type or file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Use JPG, PNG, WEBP, or GIF.")
+    if file.size and file.size > 8 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image too large. Maximum size is 8MB.")
+
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", file.filename or "upload")
+    file_path = UPLOAD_DIR / safe_name
+    contents = file.file.read()
+    with open(file_path, "wb") as fh:
+        fh.write(contents)
+
+    url = f"{settings.APP_PUBLIC_URL}/static/{safe_name}"
+    return {"url": url, "filename": safe_name}
+
+
+@app.get("/api/buildings")
+def list_buildings(db: Session = Depends(get_db)):
+    buildings = db.query(Building).order_by(Building.sort_order).all()
+    payload = []
+    for building in buildings:
+        payload.append(
+            {
+                "id": building.id,
+                "name": building.name,
+                "description": building.description,
+                "image_url": building.image_url,
+                "sort_order": building.sort_order,
+                "is_published": building.is_published,
+                "categories": [
+                    {
+                        "id": category.id,
+                        "name": category.name,
+                        "description": category.description,
+                        "image_url": category.image_url,
+                        "sort_order": category.sort_order,
+                        "is_published": category.is_published,
+                    }
+                    for category in building.categories
+                ],
+            }
+        )
+    return payload
+
+
+@app.post("/api/buildings")
+def create_building(payload: BuildingCreate, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    building = Building(**payload.model_dump())
+    db.add(building)
+    db.commit()
+    db.refresh(building)
+    return building
+
+
+@app.get("/api/buildings/{building_id}")
+def get_building(building_id: int, db: Session = Depends(get_db)):
+    building = db.query(Building).filter(Building.id == building_id).first()
+    if not building:
+        raise HTTPException(status_code=404, detail="Building not found")
+    return {
+        "id": building.id,
+        "name": building.name,
+        "description": building.description,
+        "image_url": building.image_url,
+        "sort_order": building.sort_order,
+        "is_published": building.is_published,
+        "categories": [
+            {
+                "id": category.id,
+                "name": category.name,
+                "description": category.description,
+                "image_url": category.image_url,
+                "sort_order": category.sort_order,
+                "is_published": category.is_published,
+                "rooms": [
+                    {
+                        "id": room.id,
+                        "room_number": room.room_number,
+                        "name": room.name,
+                        "description": room.description,
+                        "image_url": room.image_url,
+                        "sort_order": room.sort_order,
+                        "is_published": room.is_published,
+                    }
+                    for room in category.rooms
+                ],
+            }
+            for category in building.categories
+        ],
+    }
+
+
+@app.put("/api/buildings/{building_id}")
+def update_building(building_id: int, payload: BuildingUpdate, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    building = db.query(Building).filter(Building.id == building_id).first()
+    if not building:
+        raise HTTPException(status_code=404, detail="Building not found")
+    for key, value in payload.model_dump().items():
+        setattr(building, key, value)
+    db.commit()
+    db.refresh(building)
+    return building
+
+
+@app.delete("/api/buildings/{building_id}")
+def delete_building(building_id: int, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    building = db.query(Building).filter(Building.id == building_id).first()
+    if not building:
+        raise HTTPException(status_code=404, detail="Building not found")
+    if building.categories:
+        for category in building.categories:
+            if category.rooms:
+                raise HTTPException(status_code=400, detail="Cannot delete building with rooms attached. Delete child records first.")
+    db.delete(building)
+    db.commit()
+    return {"success": True}
+
+
+@app.get("/api/buildings/{building_id}/categories")
+def list_categories_for_building(building_id: int, db: Session = Depends(get_db)):
+    building = db.query(Building).filter(Building.id == building_id).first()
+    if not building:
+        raise HTTPException(status_code=404, detail="Building not found")
+    return [
+        {
+            "id": category.id,
+            "name": category.name,
+            "description": category.description,
+            "image_url": category.image_url,
+            "sort_order": category.sort_order,
+            "is_published": category.is_published,
+        }
+        for category in building.categories
+    ]
+
+
+@app.post("/api/buildings/{building_id}/categories")
+def create_category(building_id: int, payload: CategoryCreate, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    building = db.query(Building).filter(Building.id == building_id).first()
+    if not building:
+        raise HTTPException(status_code=404, detail="Building not found")
+    category = Category(building_id=building_id, **payload.model_dump(exclude={"building_id"}))
+    db.add(category)
+    db.commit()
+    db.refresh(category)
+    return category
+
+
+@app.get("/api/categories/{category_id}")
+def get_category(category_id: int, db: Session = Depends(get_db)):
+    category = db.query(Category).filter(Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return {
+        "id": category.id,
+        "building_id": category.building_id,
+        "name": category.name,
+        "description": category.description,
+        "image_url": category.image_url,
+        "sort_order": category.sort_order,
+        "is_published": category.is_published,
+        "rooms": [
+            {
+                "id": room.id,
+                "room_number": room.room_number,
+                "name": room.name,
+                "description": room.description,
+                "image_url": room.image_url,
+                "sort_order": room.sort_order,
+                "is_published": room.is_published,
+            }
+            for room in category.rooms
+        ],
+    }
+
+
+@app.put("/api/categories/{category_id}")
+def update_category(category_id: int, payload: CategoryUpdate, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    category = db.query(Category).filter(Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    for key, value in payload.model_dump().items():
+        setattr(category, key, value)
+    db.commit()
+    db.refresh(category)
+    return category
+
+
+@app.delete("/api/categories/{category_id}")
+def delete_category(category_id: int, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    category = db.query(Category).filter(Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    if category.rooms:
+        raise HTTPException(status_code=400, detail="Cannot delete category with rooms attached. Delete child records first.")
+    db.delete(category)
+    db.commit()
+    return {"success": True}
+
+
+@app.get("/api/categories/{category_id}/rooms")
+def list_rooms_for_category(category_id: int, db: Session = Depends(get_db)):
+    category = db.query(Category).filter(Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return [
+        {
+            "id": room.id,
+            "room_number": room.room_number,
+            "name": room.name,
+            "description": room.description,
+            "image_url": room.image_url,
+            "sort_order": room.sort_order,
+            "is_published": room.is_published,
+        }
+        for room in category.rooms
+    ]
+
+
+@app.post("/api/categories/{category_id}/rooms")
+def create_room(category_id: int, payload: RoomCreate, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    category = db.query(Category).filter(Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    room = Room(category_id=category_id, **payload.model_dump(exclude={"category_id"}))
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+    return room
+
+
+@app.get("/api/rooms/{room_id}")
+def get_room(room_id: int, db: Session = Depends(get_db)):
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    return {
+        "id": room.id,
+        "category_id": room.category_id,
+        "room_number": room.room_number,
+        "name": room.name,
+        "description": room.description,
+        "image_url": room.image_url,
+        "sort_order": room.sort_order,
+        "is_published": room.is_published,
+        "business": room.business,
+    }
+
+
+@app.put("/api/rooms/{room_id}")
+def update_room(room_id: int, payload: RoomUpdate, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    for key, value in payload.model_dump().items():
+        setattr(room, key, value)
+    db.commit()
+    db.refresh(room)
+    return room
+
+
+@app.delete("/api/rooms/{room_id}")
+def delete_room(room_id: int, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room.business:
+        raise HTTPException(status_code=400, detail="Cannot delete room with business details. Delete the business record first.")
+    db.delete(room)
+    db.commit()
+    return {"success": True}
+
+
+@app.get("/api/rooms/{room_id}/business")
+def get_business_for_room(room_id: int, db: Session = Depends(get_db)):
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    return room.business
+
+
+@app.get("/api/businesses/{business_id}")
+def get_business(business_id: int, db: Session = Depends(get_db)):
+    business = db.query(Business).filter(Business.id == business_id).first()
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found")
+    return {
+        "id": business.id,
+        "room_id": business.room_id,
+        "business_name": business.business_name,
+        "description": business.description,
+        "phone": business.phone,
+        "alternative_phone": business.alternative_phone,
+        "telegram": business.telegram,
+        "whatsapp": business.whatsapp,
+        "facebook": business.facebook,
+        "instagram": business.instagram,
+        "website": business.website,
+        "opening_hours": business.opening_hours,
+        "services": business.services,
+        "products": business.products,
+        "notes": business.notes,
+        "image_url": business.image_url,
+        "gallery_images": business.gallery_images,
+        "is_published": business.is_published,
+        "room": {
+            "id": business.room.id,
+            "room_number": business.room.room_number,
+            "name": business.room.name,
+            "category": {
+                "id": business.room.category.id,
+                "name": business.room.category.name,
+                "building": {
+                    "id": business.room.category.building.id,
+                    "name": business.room.category.building.name,
+                },
+            },
+        },
+    }
+
+
+@app.post("/api/rooms/{room_id}/business")
+def create_business(room_id: int, payload: BusinessCreate, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room.business:
+        raise HTTPException(status_code=400, detail="Room already has a business record.")
+    business = Business(room_id=room_id, **payload.model_dump(exclude={"room_id"}))
+    db.add(business)
+    db.commit()
+    db.refresh(business)
+    return business
+
+
+@app.put("/api/businesses/{business_id}")
+def update_business(business_id: int, payload: BusinessUpdate, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    business = db.query(Business).filter(Business.id == business_id).first()
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found")
+    for key, value in payload.model_dump().items():
+        setattr(business, key, value)
+    db.commit()
+    db.refresh(business)
+    return business
+
+
+@app.delete("/api/businesses/{business_id}")
+def delete_business(business_id: int, db: Session = Depends(get_db), current_admin: AdminUser = Depends(get_current_admin)):
+    business = db.query(Business).filter(Business.id == business_id).first()
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found")
+    db.delete(business)
+    db.commit()
+    return {"success": True}
+
+
+@app.get("/api/search")
+def search_directory(q: str = Query(default=""), db: Session = Depends(get_db)):
+    if not q or not q.strip():
+        return []
+
+    terms = [part.strip() for part in q.split() if part.strip()]
+    if not terms:
+        return []
+
+    query = db.query(Business).join(Room).join(Category).join(Building)
+    filters = []
+    for term in terms:
+        pattern = f"%{term}%"
+        filters.append(
+            or_(
+                Business.business_name.ilike(pattern),
+                Business.description.ilike(pattern),
+                Business.phone.ilike(pattern),
+                Business.alternative_phone.ilike(pattern),
+                Business.services.ilike(pattern),
+                Business.products.ilike(pattern),
+                Business.notes.ilike(pattern),
+                Room.name.ilike(pattern),
+                Room.room_number.ilike(pattern),
+                Category.name.ilike(pattern),
+                Building.name.ilike(pattern),
+            )
+        )
+    query = query.filter(and_(*filters))
+
+    businesses = query.order_by(Business.business_name).all()
+    results = []
+    for business in businesses:
+        room = business.room
+        category = room.category
+        building = category.building
+        results.append(
+            {
+                "id": business.id,
+                "business_name": business.business_name,
+                "phone": business.phone,
+                "image_url": business.image_url,
+                "room": {"id": room.id, "room_number": room.room_number, "name": room.name},
+                "category": {"id": category.id, "name": category.name},
+                "building": {"id": building.id, "name": building.name},
+            }
+        )
+    return results

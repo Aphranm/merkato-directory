@@ -1,134 +1,85 @@
+from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, ForeignKey, DateTime, JSON
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
-from typing import List, Optional
+from app.config import settings
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+engine = create_engine(settings.DATABASE_URL, echo=False)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-from app.database import Base
-
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 class AdminUser(Base):
     __tablename__ = "admin_users"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    username: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(40), default="admin", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    __table_args__ = (
-        Index('idx_admin_username', 'username'),
-    )
-
+    id = Column(Integer, primary_key=True)
+    username = Column(String(255), unique=True, index=True)
+    password = Column(String(255))
+    role = Column(String(50), default="admin")
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Building(Base):
     __tablename__ = "buildings"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    categories: Mapped[List["Category"]] = relationship(
-        back_populates="building",
-        cascade="all, delete-orphan",
-        order_by="Category.sort_order",
-    )
-
-    __table_args__ = (
-        Index('idx_building_name', 'name'),
-        Index('idx_building_published', 'is_published'),
-    )
-
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), index=True)
+    description = Column(Text, default="")
+    image_url = Column(String(500), default="")
+    sort_order = Column(Integer, default=0)
+    is_published = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    categories = relationship("Category", back_populates="building", cascade="all, delete-orphan")
 
 class Category(Base):
     __tablename__ = "categories"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    building_id: Mapped[int] = mapped_column(Integer, ForeignKey("buildings.id", ondelete="CASCADE"), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    building: Mapped[Building] = relationship(back_populates="categories")
-    rooms: Mapped[List["Room"]] = relationship(
-        back_populates="category",
-        cascade="all, delete-orphan",
-        order_by="Room.sort_order",
-    )
-
-    __table_args__ = (
-        Index('idx_category_building_id', 'building_id'),
-        Index('idx_category_name', 'name'),
-        Index('idx_category_published', 'is_published'),
-    )
-
+    id = Column(Integer, primary_key=True)
+    building_id = Column(Integer, ForeignKey("buildings.id"), index=True)
+    name = Column(String(255), index=True)
+    description = Column(Text, default="")
+    image_url = Column(String(500), default="")
+    sort_order = Column(Integer, default=0)
+    is_published = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    building = relationship("Building", back_populates="categories")
+    rooms = relationship("Room", back_populates="category", cascade="all, delete-orphan")
 
 class Room(Base):
     __tablename__ = "rooms"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    category_id: Mapped[int] = mapped_column(Integer, ForeignKey("categories.id", ondelete="CASCADE"), nullable=False, index=True)
-    room_number: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    category: Mapped[Category] = relationship(back_populates="rooms")
-    business: Mapped[Optional["Business"]] = relationship(
-        back_populates="room",
-        cascade="all, delete-orphan",
-        uselist=False,
-    )
-
-    __table_args__ = (
-        Index('idx_room_category_id', 'category_id'),
-        Index('idx_room_name', 'name'),
-        Index('idx_room_published', 'is_published'),
-    )
-
+    id = Column(Integer, primary_key=True)
+    category_id = Column(Integer, ForeignKey("categories.id"), index=True)
+    room_number = Column(String(50), index=True)
+    name = Column(String(255), index=True)
+    description = Column(Text, default="")
+    image_url = Column(String(500), default="")
+    sort_order = Column(Integer, default=0)
+    is_published = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    category = relationship("Category", back_populates="rooms")
+    business = relationship("Business", back_populates="room", cascade="all, delete-orphan", uselist=False)
 
 class Business(Base):
     __tablename__ = "businesses"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    room_id: Mapped[int] = mapped_column(Integer, ForeignKey("rooms.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
-    business_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    phone: Mapped[Optional[str]] = mapped_column(String(40), nullable=True, index=True)
-    alternative_phone: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
-    telegram: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
-    whatsapp: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
-    facebook: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    instagram: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    website: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
-    opening_hours: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    services: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    products: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    gallery_images: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True, default=list)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    room: Mapped[Room] = relationship(back_populates="business")
-
-    __table_args__ = (
-        Index('idx_business_name', 'business_name'),
-        Index('idx_business_published', 'is_published'),
-        Index('idx_business_phone', 'phone'),
-    )
+    id = Column(Integer, primary_key=True)
+    room_id = Column(Integer, ForeignKey("rooms.id"), unique=True, index=True)
+    business_name = Column(String(255), index=True)
+    description = Column(Text, default="")
+    phone = Column(String(50), default="")
+    alternative_phone = Column(String(50), default="")
+    telegram = Column(String(100), default="")
+    whatsapp = Column(String(50), default="")
+    facebook = Column(String(100), default="")
+    instagram = Column(String(100), default="")
+    website = Column(String(500), default="")
+    opening_hours = Column(String(255), default="")
+    services = Column(Text, default="")
+    products = Column(Text, default="")
+    notes = Column(Text, default="")
+    image_url = Column(String(500), default="")
+    gallery_images = Column(JSON, default=list)
+    is_published = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    room = relationship("Room", back_populates="business")

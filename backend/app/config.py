@@ -1,26 +1,22 @@
+import os
+from functools import lru_cache
 from pydantic_settings import BaseSettings
-from pathlib import Path
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "sqlite:///./app.db"
-    SECRET_KEY: str = "dev-secret-change-me-in-production"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
     APP_NAME: str = "Merkato Directory"
-    DEBUG: bool = False
-    UPLOAD_ROOT: str = "./uploads"
-    MAX_UPLOAD_SIZE: int = 8388608  # 8MB
-    APP_PUBLIC_URL: str = "http://localhost:8000"
-    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
-    ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "admin123"
-
+    APP_PUBLIC_URL: str = os.getenv("APP_PUBLIC_URL", "http://localhost:8000")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./merkato.db")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:5173")
+    UPLOAD_ROOT: str = os.getenv("UPLOAD_ROOT", "./uploads")
+    MAX_UPLOAD_SIZE: int = int(os.getenv("MAX_UPLOAD_SIZE", "8388608"))
+    ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME", "admin")
+    ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "admin123")
     class Config:
         env_file = ".env"
-        case_sensitive = False
 
-settings = Settings()
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
 
-# Ensure upload directory exists
-upload_dir = Path(settings.UPLOAD_ROOT)
-upload_dir.mkdir(parents=True, exist_ok=True)
+settings = get_settings()

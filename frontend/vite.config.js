@@ -1,20 +1,6 @@
-{
-  "name": "merkato-directory-frontend",
-  "private": true,
-  "version": "1.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.2",
-    "vite": "^5.4.10"
-  }
-}
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+export default defineConfig({
+  plugins: [react()],
+  server: { proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } } }
+})

@@ -1,48 +1,26 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../api';
+import '../../styles.css';
 
-async function apiFetch(path, options = {}) {
-  const token = localStorage.getItem('merkato_token');
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(options.headers || {}),
-  };
+export default function PublicHome() {
+  const navigate = useNavigate();
+  const [buildings, setBuildings] = useState([]);
+  const [error, setError] = useState('');
 
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
+  useEffect(() => {
+    (async () => {
+      try {
+        setBuildings(await apiFetch('/api/buildings'));
+      } catch (e) {
+        setError(e.message);
+      }
+    })();
+  }, []);
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || 'Request failed');
-  }
-
-  return response.status === 204 ? null : response.json();
+  return <main className="public-shell">
+    <header className="hero"><div className="container"><h1>Merkato Directory</h1><p>Discover shops and businesses</p><Link to="/admin/login" className="admin-link">Admin</Link></div></header>
+    {error && <div className="container error-notice">{error}</div>}
+    <section className="container"><div className="grid">{buildings.map(b => <div key={b.id} className="card"><img src={b.image_url || 'https://via.placeholder.com/300'} alt={b.name} /><h3>{b.name}</h3><p>{b.description}</p><Link to={`/buildings/${b.id}`}>View →</Link></div>)}</div></section>
+  </main>;
 }
-
-async function apiUpload(file) {
-  const token = localStorage.getItem('merkato_token');
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const response = await fetch(`${API_BASE_URL}/api/upload`, {
-    method: 'POST',
-    headers: {
-      Authorization: token ? `Bearer ${token}` : '',
-    },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const result = await response.json();
-    throw new Error(result.detail || 'Upload failed');
-  }
-
-  return response.json();
-}
-
-export { API_BASE_URL, apiFetch, apiUpload };

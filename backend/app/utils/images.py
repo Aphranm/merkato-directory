@@ -1,6 +1,5 @@
 import io
 import os
-import re
 from PIL import Image
 from app.config import settings
 
@@ -14,7 +13,7 @@ def validate_image_file(filename: str, size: int):
 
 def sanitize_filename(filename: str) -> str:
     filename = os.path.basename(filename)
-    return re.sub(r"[^A-Za-z0-9._-]", "_", filename).strip(".")
+    return os.path.splitext(filename)[0][:50] if filename else "image"
 
 def optimize_image(content: bytes):
     image = Image.open(io.BytesIO(content))

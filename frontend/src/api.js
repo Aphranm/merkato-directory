@@ -1,25 +1,21 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
-import PublicHome from './pages/PublicHome';
-import BuildingPage from './pages/BuildingPage';
-import CategoryPage from './pages/CategoryPage';
-import RoomPage from './pages/RoomPage';
-import BusinessPage from './pages/BusinessPage';
-import LoginPage from './pages/admin/LoginPage';
-import Dashboard from './pages/admin/Dashboard';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-function App() {
-  return (
-    <Routes>
-      <Route path="/" element={<PublicHome />} />
-      <Route path="/buildings/:buildingId" element={<BuildingPage />} />
-      <Route path="/buildings/:buildingId/categories/:categoryId" element={<CategoryPage />} />
-      <Route path="/buildings/:buildingId/categories/:categoryId/rooms/:roomId" element={<RoomPage />} />
-      <Route path="/businesses/:businessId" element={<BusinessPage />} />
-      <Route path="/admin/login" element={<LoginPage />} />
-      <Route path="/admin" element={<Dashboard />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
+async function apiFetch(path, options = {}) {
+  const token = localStorage.getItem('merkato_token');
+  const headers = { ...(options.body instanceof FormData ? {} : {'Content-Type': 'application/json'}), ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE_URL}${path}`, {...options, headers});
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (!response.ok) throw new Error(data?.detail || data?.message || 'Request failed');
+  return data;
 }
 
-export default App;
+async function apiUpload(file) {
+  const form = new FormData();
+  form.append('file', file);
+  return apiFetch('/api/upload', { method: 'POST', body: form });
+}
+
+export { API_BASE_URL, apiFetch, apiUpload };

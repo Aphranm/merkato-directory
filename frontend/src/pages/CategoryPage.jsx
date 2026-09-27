@@ -1,59 +1,29 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { apiFetch } from '../api';
+import { apiFetch } from '../../api';
+import '../../styles.css';
 
-function BuildingPage() {
-  const { buildingId } = useParams();
-  const [building, setBuilding] = useState(null);
+export default function CategoryPage() {
+  const { buildingId, categoryId } = useParams();
+  const [category, setCategory] = useState(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    async function loadBuilding() {
-      const data = await apiFetch(`/api/buildings/${buildingId}`);
-      setBuilding(data);
-    }
+    (async () => {
+      try {
+        setCategory(await apiFetch(`/api/categories/${categoryId}`));
+      } catch (e) {
+        setError(e.message);
+      }
+    })();
+  }, [categoryId]);
 
-    loadBuilding();
-  }, [buildingId]);
+  if (error) return <main className="container"><p>{error}</p></main>;
+  if (!category) return <main className="container"><p>Loading...</p></main>;
 
-  if (!building) return <div className="container page-space">Loading...</div>;
-
-  return (
-    <div className="container page-space">
-      <nav className="breadcrumb">
-        <Link to="/">Home</Link>
-        <span>›</span>
-        <span>{building.name}</span>
-      </nav>
-
-      <section className="panel detail-header">
-        {building.image_url && <img src={building.image_url} alt={building.name} loading="lazy" />}
-        <div>
-          <span className="eyebrow">Building</span>
-          <h1>{building.name}</h1>
-          <p>{building.description}</p>
-        </div>
-      </section>
-
-      <section>
-        <h2>Categories</h2>
-        {building.categories?.length ? (
-          <div className="stack-grid">
-            {building.categories.map((category) => (
-              <Link key={category.id} to={`/buildings/${building.id}/categories/${category.id}`} className="stack-card">
-                {category.image_url && <img src={category.image_url} alt={category.name} loading="lazy" />}
-                <div>
-                  <strong>{category.name}</strong>
-                  <p>{category.description}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state">No categories in this building yet.</div>
-        )}
-      </section>
-    </div>
-  );
+  return <main className="public-shell">
+    <section className="container breadcrumb"><Link to="/">Buildings</Link> / <Link to={`/buildings/${buildingId}`}>{category.building_name}</Link> / <strong>{category.name}</strong></section>
+    <section className="container detail"><img src={category.image_url || 'https://via.placeholder.com/600'} alt={category.name} /><div><h1>{category.name}</h1><p>{category.description}</p></div></section>
+    <section className="container"><h2>Rooms & Shops</h2><div className="grid">{category.rooms?.map(r => <div key={r.id} className="card"><img src={r.image_url || 'https://via.placeholder.com/300'} alt={r.name} /><h3>{r.name}</h3><p>{r.description || r.room_number}</p><Link to={`/buildings/${buildingId}/categories/${categoryId}/rooms/${r.id}`}>View →</Link></div>)}</div></section>
+  </main>;
 }
-
-export default BuildingPage;

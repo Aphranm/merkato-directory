@@ -1,170 +1,94 @@
-from typing import List, Optional
-from pydantic import BaseModel, Field, field_validator
-
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
+from typing import Optional
+from pydantic import BaseModel
 
 class UserLogin(BaseModel):
     username: str
     password: str
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
-class AdminUserResponse(BaseModel):
-    id: int
-    username: str
-    role: str
-
-    class Config:
-        from_attributes = True
-
-
-class BuildingBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=2000)
-    image_url: Optional[str] = None
+class BuildingCreate(BaseModel):
+    name: str
+    description: str = ""
+    image_url: str = ""
     sort_order: int = 0
     is_published: bool = True
 
-    @field_validator('name')
-    def name_not_empty(cls, v):
-        if not v or not v.strip():
-            raise ValueError('Building name cannot be empty')
-        return v.strip()
-
-
-class BuildingCreate(BuildingBase):
-    pass
-
-
-class BuildingUpdate(BuildingBase):
-    pass
-
-
-class BuildingResponse(BuildingBase):
-    id: int
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
-
-
-class CategoryBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=2000)
+class BuildingUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
     image_url: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_published: Optional[bool] = None
+
+class CategoryCreate(BaseModel):
+    name: str
+    description: str = ""
+    image_url: str = ""
     sort_order: int = 0
     is_published: bool = True
 
-    @field_validator('name')
-    def name_not_empty(cls, v):
-        if not v or not v.strip():
-            raise ValueError('Category name cannot be empty')
-        return v.strip()
-
-
-class CategoryCreate(CategoryBase):
-    pass
-
-
-class CategoryUpdate(CategoryBase):
-    pass
-
-
-class CategoryResponse(CategoryBase):
-    id: int
-    building_id: int
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
-
-
-class RoomBase(BaseModel):
-    room_number: str = Field(..., min_length=1, max_length=80)
-    name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=2000)
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
     image_url: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_published: Optional[bool] = None
+
+class RoomCreate(BaseModel):
+    room_number: str
+    name: str
+    description: str = ""
+    image_url: str = ""
     sort_order: int = 0
     is_published: bool = True
 
-    @field_validator('room_number', 'name')
-    def fields_not_empty(cls, v):
-        if not v or not v.strip():
-            raise ValueError('Field cannot be empty')
-        return v.strip()
-
-
-class RoomCreate(RoomBase):
-    pass
-
-
-class RoomUpdate(RoomBase):
-    pass
-
-
-class RoomResponse(RoomBase):
-    id: int
-    category_id: int
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
-
-
-class BusinessBase(BaseModel):
-    business_name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=2000)
-    phone: Optional[str] = Field(None, max_length=40)
-    alternative_phone: Optional[str] = Field(None, max_length=40)
-    telegram: Optional[str] = Field(None, max_length=120)
-    whatsapp: Optional[str] = Field(None, max_length=120)
-    facebook: Optional[str] = Field(None, max_length=200)
-    instagram: Optional[str] = Field(None, max_length=200)
-    website: Optional[str] = Field(None, max_length=300)
-    opening_hours: Optional[str] = Field(None, max_length=500)
-    services: Optional[str] = Field(None, max_length=2000)
-    products: Optional[str] = Field(None, max_length=2000)
-    notes: Optional[str] = Field(None, max_length=2000)
+class RoomUpdate(BaseModel):
+    room_number: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
     image_url: Optional[str] = None
-    gallery_images: Optional[List[str]] = None
+    sort_order: Optional[int] = None
+    is_published: Optional[bool] = None
+
+class BusinessCreate(BaseModel):
+    business_name: str
+    description: str = ""
+    phone: str = ""
+    alternative_phone: str = ""
+    telegram: str = ""
+    whatsapp: str = ""
+    facebook: str = ""
+    instagram: str = ""
+    website: str = ""
+    opening_hours: str = ""
+    services: str = ""
+    products: str = ""
+    notes: str = ""
+    image_url: str = ""
+    gallery_images: list = []
     is_published: bool = True
 
-    @field_validator('business_name')
-    def business_name_not_empty(cls, v):
-        if not v or not v.strip():
-            raise ValueError('Business name cannot be empty')
-        return v.strip()
-
-
-class BusinessCreate(BusinessBase):
-    pass
-
-
-class BusinessUpdate(BusinessBase):
-    pass
-
-
-class BusinessResponse(BusinessBase):
-    id: int
-    room_id: int
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
-
+class BusinessUpdate(BaseModel):
+    business_name: Optional[str] = None
+    description: Optional[str] = None
+    phone: Optional[str] = None
+    alternative_phone: Optional[str] = None
+    telegram: Optional[str] = None
+    whatsapp: Optional[str] = None
+    facebook: Optional[str] = None
+    instagram: Optional[str] = None
+    website: Optional[str] = None
+    opening_hours: Optional[str] = None
+    services: Optional[str] = None
+    products: Optional[str] = None
+    notes: Optional[str] = None
+    image_url: Optional[str] = None
+    gallery_images: Optional[list] = None
+    is_published: Optional[bool] = None
 
 class UploadResponse(BaseModel):
     url: str
     filename: str
-
-
-class ErrorResponse(BaseModel):
-    detail: str
-    error_code: Optional[str] = None

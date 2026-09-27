@@ -1,107 +1,170 @@
-from datetime import datetime
 from typing import List, Optional
-
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.database import Base
+from pydantic import BaseModel, Field, field_validator
 
 
-class AdminUser(Base):
-    __tablename__ = "admin_users"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    username: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(40), default="admin", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
 
-class Building(Base):
-    __tablename__ = "buildings"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    categories: Mapped[List["Category"]] = relationship(
-        back_populates="building",
-        cascade="all, delete-orphan",
-        order_by="Category.sort_order",
-    )
+class UserLogin(BaseModel):
+    username: str
+    password: str
 
 
-class Category(Base):
-    __tablename__ = "categories"
+class AdminUserResponse(BaseModel):
+    id: int
+    username: str
+    role: str
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    building_id: Mapped[int] = mapped_column(Integer, ForeignKey("buildings.id", ondelete="CASCADE"), nullable=False)
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    building: Mapped[Building] = relationship(back_populates="categories")
-    rooms: Mapped[List["Room"]] = relationship(
-        back_populates="category",
-        cascade="all, delete-orphan",
-        order_by="Room.sort_order",
-    )
+    class Config:
+        from_attributes = True
 
 
-class Room(Base):
-    __tablename__ = "rooms"
+class BuildingBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=2000)
+    image_url: Optional[str] = None
+    sort_order: int = 0
+    is_published: bool = True
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    category_id: Mapped[int] = mapped_column(Integer, ForeignKey("categories.id", ondelete="CASCADE"), nullable=False)
-    room_number: Mapped[str] = mapped_column(String(80), nullable=False)
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    category: Mapped[Category] = relationship(back_populates="rooms")
-    business: Mapped[Optional["Business"]] = relationship(
-        back_populates="room",
-        cascade="all, delete-orphan",
-        uselist=False,
-    )
+    @field_validator('name')
+    def name_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Building name cannot be empty')
+        return v.strip()
 
 
-class Business(Base):
-    __tablename__ = "businesses"
+class BuildingCreate(BuildingBase):
+    pass
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    room_id: Mapped[int] = mapped_column(Integer, ForeignKey("rooms.id", ondelete="CASCADE"), unique=True, nullable=False)
-    business_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    phone: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
-    alternative_phone: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
-    telegram: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
-    whatsapp: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
-    facebook: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    instagram: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    website: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
-    opening_hours: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    services: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    products: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    gallery_images: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True, default=list)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    room: Mapped[Room] = relationship(back_populates="business")
+class BuildingUpdate(BuildingBase):
+    pass
+
+
+class BuildingResponse(BuildingBase):
+    id: int
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class CategoryBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=2000)
+    image_url: Optional[str] = None
+    sort_order: int = 0
+    is_published: bool = True
+
+    @field_validator('name')
+    def name_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Category name cannot be empty')
+        return v.strip()
+
+
+class CategoryCreate(CategoryBase):
+    pass
+
+
+class CategoryUpdate(CategoryBase):
+    pass
+
+
+class CategoryResponse(CategoryBase):
+    id: int
+    building_id: int
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class RoomBase(BaseModel):
+    room_number: str = Field(..., min_length=1, max_length=80)
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=2000)
+    image_url: Optional[str] = None
+    sort_order: int = 0
+    is_published: bool = True
+
+    @field_validator('room_number', 'name')
+    def fields_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Field cannot be empty')
+        return v.strip()
+
+
+class RoomCreate(RoomBase):
+    pass
+
+
+class RoomUpdate(RoomBase):
+    pass
+
+
+class RoomResponse(RoomBase):
+    id: int
+    category_id: int
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class BusinessBase(BaseModel):
+    business_name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=2000)
+    phone: Optional[str] = Field(None, max_length=40)
+    alternative_phone: Optional[str] = Field(None, max_length=40)
+    telegram: Optional[str] = Field(None, max_length=120)
+    whatsapp: Optional[str] = Field(None, max_length=120)
+    facebook: Optional[str] = Field(None, max_length=200)
+    instagram: Optional[str] = Field(None, max_length=200)
+    website: Optional[str] = Field(None, max_length=300)
+    opening_hours: Optional[str] = Field(None, max_length=500)
+    services: Optional[str] = Field(None, max_length=2000)
+    products: Optional[str] = Field(None, max_length=2000)
+    notes: Optional[str] = Field(None, max_length=2000)
+    image_url: Optional[str] = None
+    gallery_images: Optional[List[str]] = None
+    is_published: bool = True
+
+    @field_validator('business_name')
+    def business_name_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Business name cannot be empty')
+        return v.strip()
+
+
+class BusinessCreate(BusinessBase):
+    pass
+
+
+class BusinessUpdate(BusinessBase):
+    pass
+
+
+class BusinessResponse(BusinessBase):
+    id: int
+    room_id: int
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class UploadResponse(BaseModel):
+    url: str
+    filename: str
+
+
+class ErrorResponse(BaseModel):
+    detail: str
+    error_code: Optional[str] = None

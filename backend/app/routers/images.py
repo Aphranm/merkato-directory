@@ -13,7 +13,7 @@ from app.schemas import ImageOut
 
 router = APIRouter(prefix="/api/businesses", tags=["business-images"])
 buildings_router = APIRouter(prefix="/api/buildings", tags=["building-images"])
-UPLOADS_DIR = Path(__file__).resolve().parents[2] / "uploads"
+UPLOADS_DIR = Path('/tmp/merkato-uploads')
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 MAX_IMAGE_SIZE = 5 * 1024 * 1024
 IMAGE_TYPES = {

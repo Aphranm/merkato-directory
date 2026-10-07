@@ -16,6 +16,7 @@ const sections = [
 ];
 
 async function apiRequest(url, { token, method = 'GET', body, signal } = {}) {
+  const API_BASE = import.meta.env.VITE_API_TARGET || "";
   const headers = {};
   let requestBody = body;
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -24,7 +25,7 @@ async function apiRequest(url, { token, method = 'GET', body, signal } = {}) {
     requestBody = JSON.stringify(body);
   }
 
-  const response = await fetch(url, { method, headers, body: requestBody, signal });
+  const response = await fetch(`${API_BASE}${url}`, { method, headers, body: requestBody, signal });
   if (!response.ok) {
     const result = await response.json().catch(() => null);
     const detail = result?.detail;

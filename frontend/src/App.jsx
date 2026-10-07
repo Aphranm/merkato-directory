@@ -28,7 +28,8 @@ function writeUrlFilters(filters, replace = false) {
 }
 
 async function fetchJson(url, signal) {
-  const response = await fetch(url, { signal });
+  const API_BASE = import.meta.env.VITE_API_TARGET || "";
+  const response = await fetch(`${API_BASE}${url}`, { signal });
   if (!response.ok) {
     const result = await response.json().catch(() => null);
     throw new Error(typeof result?.detail === 'string' ? result.detail : `Request failed (${response.status})`);

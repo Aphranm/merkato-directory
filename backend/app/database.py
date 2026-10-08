@@ -13,15 +13,33 @@ class Base(DeclarativeBase):
 
 
 engine_kwargs = {"pool_pre_ping": True}
-if settings.database_url.startswith("sqlite"):
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
 
-engine = create_engine(settings.database_url, **engine_kwargs)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+if settings.database_url.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {
+        "check_same_thread": False
+    }
+else:
+    engine_kwargs["connect_args"] = {
+        "options": "-csearch_path=public"
+    }
+
+
+engine = create_engine(
+    settings.database_url,
+    **engine_kwargs
+)
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine
+)
 
 
 def init_db() -> None:
-    config = Config(Path(__file__).resolve().parents[1] / "alembic.ini")
+    config = Config(
+        Path(__file__).resolve().parents[1] / "alembic.ini"
+    )
     command.upgrade(config, "head")
 
 

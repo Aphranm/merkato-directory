@@ -13,8 +13,12 @@ from app.core.config import settings
 from app.database import Base
 import app.models
 
+
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
+config.set_main_option(
+    "sqlalchemy.url",
+    settings.database_url.replace("%", "%%")
+)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -30,6 +34,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
     )
+
     with context.begin_transaction():
         context.run_migrations()
 
@@ -39,7 +44,11 @@ def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args={
+            "options": "-csearch_path=public"
+        },
     )
+
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
@@ -47,6 +56,7 @@ def run_migrations_online() -> None:
             compare_type=True,
             render_as_batch=connection.dialect.name == "sqlite",
         )
+
         with context.begin_transaction():
             context.run_migrations()
 

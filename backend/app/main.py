@@ -1,3 +1,5 @@
+import os
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -25,9 +27,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-init_db()
-
-
 def seed_default_roles():
     db = SessionLocal()
     try:
@@ -46,7 +45,9 @@ def seed_default_roles():
         db.close()
 
 
-seed_default_roles()
+if settings.app_env.lower() != 'production' and not os.getenv('VERCEL'):
+    init_db()
+    seed_default_roles()
 
 app.mount("/uploads", StaticFiles(directory=images.UPLOADS_DIR), name="uploads")
 

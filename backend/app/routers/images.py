@@ -40,12 +40,22 @@ buildings_router = APIRouter(
 # Upload configuration
 # ============================================================
 
-# Locally, store uploads in backend/uploads.
+# Local development stores images in backend/uploads.
+# Vercel uses /tmp because its deployed application directory
+# is read-only. Files in /tmp are temporary, not persistent.
 #
-# In production, set UPLOADS_DIR to the path of a persistent
-# storage directory provided by the hosting platform.
+# For permanent production image storage, configure object
+# storage such as Vercel Blob or an S3-compatible service.
 
-DEFAULT_UPLOADS_DIR = Path(__file__).resolve().parents[2] / "uploads"
+IS_VERCEL = bool(os.environ.get("VERCEL"))
+
+LOCAL_UPLOADS_DIR = Path(__file__).resolve().parents[2] / "uploads"
+
+DEFAULT_UPLOADS_DIR = (
+    Path("/tmp/merkato-uploads")
+    if IS_VERCEL
+    else LOCAL_UPLOADS_DIR
+)
 
 UPLOADS_DIR = Path(
     os.environ.get("UPLOADS_DIR", str(DEFAULT_UPLOADS_DIR))
@@ -79,20 +89,14 @@ IMAGE_TYPES = {
 # ============================================================
 
 async def read_validated_image(file: UploadFile) -> tuple[bytes, str]:
-    """
-    Read an uploaded image and validate its MIME type,
-    size, and file signature.
-
-    Returns:
-        A tuple containing the image bytes and file extension.
-    """
+    """Read an image and validate its MIME type, size and signature."""
 
     image_type = IMAGE_TYPES.get(file.content_type or "")
 
     if image_type is None:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Upload a JPEG, PNG, or WebP image",
+            detail="Upload a JPEG, PNG, or WebP image.",
         )
 
     content = await file.read(MAX_IMAGE_SIZE + 1)
@@ -100,7 +104,7 @@ async def read_validated_image(file: UploadFile) -> tuple[bytes, str]:
     if len(content) > MAX_IMAGE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Images must be 5 MB or smaller",
+            detail="Images must be 5 MB or smaller.",
         )
 
     extension, validate_content = image_type
@@ -108,28 +112,28 @@ async def read_validated_image(file: UploadFile) -> tuple[bytes, str]:
     if not validate_content(content):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="The uploaded file does not match its image type",
+            detail="The uploaded file does not match its image type.",
         )
 
     return content, extension
 
 
 def save_image_file(content: bytes, extension: str) -> tuple[str, Path]:
-    """
-    Save an image under a randomly generated filename.
+    """Save an image under a randomly generated filename."""
 
-    Returns:
-        The generated filename and its filesystem path.
-    """
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
     filename = f"{uuid4().hex}.{extension}"
     file_path = UPLOADS_DIR / filename
 
     try:
         file_path.write_bytes(content)
-    except Exception:
+    except OSError as exc:
         file_path.unlink(missing_ok=True)
-        raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The image could not be saved.",
+        ) from exc
 
     return filename, file_path
 
@@ -164,27 +168,20 @@ async def upload_building_image(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """
-    Upload a building image.
-
-    The building record and image metadata are stored in the
-    database. The image file is stored in UPLOADS_DIR.
-    """
+    """Upload an image for a building."""
 
     building = db.get(Building, building_id)
 
     if building is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Building not found",
+            detail="Building not found.",
         )
 
     content, extension = await read_validated_image(file)
-
     filename, file_path = save_image_file(content, extension)
 
     image_url = f"/uploads/{filename}"
-
     building.image_url = image_url
 
     image = Image(
@@ -229,7 +226,7 @@ def list_business_images(
     if business is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Business not found",
+            detail="Business not found.",
         )
 
     images = db.scalars(
@@ -261,19 +258,14 @@ async def upload_business_image(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """
-    Upload an image for a business.
-
-    The first uploaded image is marked as the primary image.
-    Additional images are assigned increasing sort orders.
-    """
+    """Upload an image for a business."""
 
     business = db.get(Business, business_id)
 
     if business is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Business not found",
+            detail="Business not found.",
         )
 
     content, extension = await read_validated_image(file)
@@ -327,12 +319,7 @@ def delete_business_image(
     db: Session = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """
-    Delete a business image and its database record.
-
-    If the deleted image was primary, promote the next
-    available image to primary status.
-    """
+    """Delete a business image and its database record."""
 
     image = db.scalar(
         select(Image).where(
@@ -344,13 +331,10 @@ def delete_business_image(
     if image is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Image not found",
+            detail="Image not found.",
         )
 
     was_primary = image.is_primary
-
-    # Extract the filename instead of trusting a database URL
-    # as a filesystem path.
     filename = Path(image.file_url).name
 
     try:
@@ -376,8 +360,6 @@ def delete_business_image(
         db.rollback()
         raise
 
-    # The database change has succeeded. Remove the corresponding
-    # file from the configured upload directory.
     file_path = UPLOADS_DIR / filename
     file_path.unlink(missing_ok=True)
 
